@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 class OpenClawNativeService(AbstractService):
     """OpenClaw native service that installs and manages OpenClaw gateway."""
 
+    # Node.js version requirement for OpenClaw
+    NODEJS_VERSION = "v22.6.0"
+    NODEJS_MAJOR_MIN = 22
+
     port: int | Any
     install_channel: str = "latest"
     service_url: str = field(init=False, default="")
@@ -35,7 +39,13 @@ class OpenClawNativeService(AbstractService):
         self.service_url = f"http://{conn.host}:{self.port}"
 
     def teardown(self, conn) -> None:
-        """Tear down the OpenClaw service."""
+        """Tear down the OpenClaw service.
+        
+        Note: spin_down is intentionally not called before teardown as the
+        implementation is pending upstream. The service directory is removed
+        which effectively stops the service on next server restart.
+        """
+        # TODO: Uncomment when spin_down is fully implemented upstream
         # self.spin_down(conn)
         self.exec.fs_delete_dir(conn, self.target_path)
         self.state = "un-initialized"
@@ -57,7 +67,15 @@ class OpenClawNativeService(AbstractService):
         return True
 
     def spin_down(self, conn) -> bool:
-        """Stop the OpenClaw gateway."""
+        """Stop the OpenClaw gateway.
+        
+        Note: This method is not yet implemented. The kill command is commented
+        out pending upstream implementation. Currently returns True to indicate
+        the method completes without error, but the service continues running.
+        
+        TODO: Implement proper service shutdown when ready upstream.
+        """
+        # TODO: Uncomment when ready to implement service shutdown
         # cmd = (
         #     "bash -lc "
         #     '"if [ -f {pid} ]; then '
@@ -104,7 +122,13 @@ class OpenClawNativeService(AbstractService):
         }
 
     def _ensure_node(self, conn) -> None:
-        """Ensure Node.js 22+ is installed via nvm."""
+        """Ensure Node.js 22+ is installed via nvm.
+        
+        Security Note: The nvm installation script is downloaded and executed
+        directly from GitHub. This follows the official nvm installation method.
+        For additional security, consider verifying the script's checksum or
+        using a pinned commit hash in production environments.
+        """
         nvm_prefix = (
             'export NVM_DIR="$HOME/.nvm"; '
             '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; '
@@ -120,7 +144,7 @@ class OpenClawNativeService(AbstractService):
                 major = int(version.strip().lstrip("v").split(".")[0])
             except ValueError:
                 major = 0
-            if major >= 22:
+            if major >= self.NODEJS_MAJOR_MIN:
                 return
 
         self.exec.execute(
@@ -137,6 +161,8 @@ class OpenClawNativeService(AbstractService):
             sudo=True,
             description="Ensure curl is installed",
         )
+        # Download and execute nvm installer
+        # Note: This follows the official nvm installation method
         self.exec.execute(
             conn,
             command="bash -lc 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash'",
@@ -149,9 +175,9 @@ class OpenClawNativeService(AbstractService):
                 "bash -lc '"
                 'export NVM_DIR="$HOME/.nvm"; '
                 '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; '
-                "nvm install v22.6.0; "
-                "nvm alias default v22.6.0; "
-                "nvm use v22.6.0'"
+                f"nvm install {self.NODEJS_VERSION}; "
+                f"nvm alias default {self.NODEJS_VERSION}; "
+                f"nvm use {self.NODEJS_VERSION}'"
             ),
             group=TaskGroup.SYSTEM_PACKAGES,
             description="Install Node.js via nvm",
@@ -172,9 +198,9 @@ class OpenClawNativeService(AbstractService):
             major = int(version.strip().lstrip("v").split(".")[0])
         except ValueError as exc:
             raise RuntimeError("Unable to parse Node.js version.") from exc
-        if major < 22:
+        if major < self.NODEJS_MAJOR_MIN:
             raise RuntimeError(
-                f"Node.js 22+ required, but found {version.strip()} after install."
+                f"Node.js {self.NODEJS_MAJOR_MIN}+ required, but found {version.strip()} after install."
             )
 
     def _install_openclaw(self, conn) -> None:
@@ -183,7 +209,7 @@ class OpenClawNativeService(AbstractService):
             "bash -lc '"
             'export NVM_DIR="$HOME/.nvm"; '
             '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; '
-            "nvm use v22.6.0; "
+            f"nvm use {self.NODEJS_VERSION}; "
             f"npm install -g openclaw@{self.install_channel}'"
         )
         self.exec.execute(
