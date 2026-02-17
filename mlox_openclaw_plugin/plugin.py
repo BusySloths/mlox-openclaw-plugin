@@ -7,7 +7,7 @@ def _build_config(config_id: str, path: str, class_name: str) -> ServiceConfig:
     """Build a ServiceConfig for OpenClaw."""
     cfg = ServiceConfig(
         id=config_id,
-        name="OpenClaw",
+        name="OpenClaw (external plugin)",
         version="latest",
         maintainer="MLOX Contributors",
         description="OpenClaw is a personal AI assistant you run on your own devices. It provides a gateway control plane and multi-channel integrations. This native service installs the OpenClaw CLI and runs the gateway on a VPS.",
